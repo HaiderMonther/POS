@@ -1,0 +1,93 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id              Int         @id @default(autoincrement())
+  name            String
+  barcode         String      @unique
+  purchasePrice   Float
+  sellingPrice    Float
+  stockQuantity   Float
+  alertQuantity   Float       @default(5)
+  unit            String      @default("UNIT") // "UNIT", "KG", or "MULTI"
+  
+  // Multi-unit support (e.g. Eggs)
+  isMultiUnit       Boolean    @default(false)
+  subUnitName       String?    // e.g. "طبقة"
+  subUnitFactor     Float?     // e.g. 30
+  masterUnitName    String?    // e.g. "كارتون"
+  masterUnitFactor  Float?     // e.g. 360
+
+  // Wholesale support
+  wholesalePrice    Float?
+  wholesaleUnit     String?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  saleItems       SaleItem[]
+}
+
+model Sale {
+  id              Int         @id @default(autoincrement())
+  totalAmount     Float
+  discount        Float       @default(0)
+  paymentType     PaymentType @default(CASH)
+  createdAt       DateTime    @default(now())
+  items           SaleItem[]
+}
+
+model SaleItem {
+  id                  Int      @id @default(autoincrement())
+  sale                Sale     @relation(fields: [saleId], references: [id])
+  saleId              Int
+  product             Product  @relation(fields: [productId], references: [id])
+  productId           Int
+  quantity            Float
+  purchasePriceAtSale Float
+  sellingPriceAtSale  Float
+  saleUnit            String?  // e.g. "مفرد" or "جملة" or the actual unit name
+}
+
+model Debt {
+  id            Int      @id @default(autoincrement())
+  type          DebtType
+  personName    String
+  phone         String?
+  amount        Float
+  paidAmount    Float    @default(0)
+  dueDate       DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  role      Role     @default(CASHIER)
+  createdAt DateTime @default(now())
+}
+
+enum Role {
+  ADMIN
+  CASHIER
+}
+
+enum PaymentType {
+  CASH
+  DEFERRED
+}
+
+enum DebtType {
+  CUSTOMER
+  SUPPLIER
+}

@@ -1,0 +1,46 @@
+const { createClerkClient } = require('@clerk/backend');
+const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcrypt');
+require('dotenv').config();
+
+const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
+const prisma = new PrismaClient();
+
+async function sync() {
+  console.log('Starting sync from Clerk to Prisma...');
+  
+  try {
+    const clerkUsers = await clerkClient.users.getUserList();
+    console.log(`Found ${clerkUsers.data.length} users in Clerk.`);
+
+    for (const clerkUser of clerkUsers.data) {
+      const username = clerkUser.username;
+      if (!username) continue;
+
+      const role = clerkUser.publicMetadata.role || 'CASHIER';
+      
+      const existingUser = await prisma.user.findUnique({
+        where: { username }
+      });
+
+      if (!existingUser) {
+        console.log(`Syncing user: ${username} (${role})`);
+        // We don't have the plain password from Clerk, so we set a temporary one
+        // and instruct the user to update it, OR we ask them to delete and re-add.
+        // Actually, since we can't get the password, the best way for EXISTING users 
+        // who can't log in is to DELETE and RE-ADD.
+        
+        // But wait, if I just want them to be able to log in, I could set a default password
+        // but that's not secure.
+      } else {
+        console.log(`User ${username} already exists in Prisma.`);
+      }
+    }
+  } catch (error) {
+    console.error('Sync failed:', error);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+sync();
