@@ -3,6 +3,7 @@ FROM node:20-alpine as frontend-builder
 WORKDIR /app/frontend
 
 # Accept frontend build arguments
+ARG CACHEBUST=2026-04-29-22-18
 ARG VITE_CLERK_PUBLISHABLE_KEY
 
 # Set frontend environment variables for Vite
