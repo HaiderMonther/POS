@@ -5,9 +5,7 @@ import {
   Shield, 
   Trash2, 
   Search, 
-  MoreVertical,
   CheckCircle2,
-  XCircle,
   UserCircle
 } from 'lucide-vue-next';
 import { toast } from 'vue3-toastify';

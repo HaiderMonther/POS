@@ -9,8 +9,7 @@ import {
   Edit2, 
   Trash2, 
   AlertTriangle,
-  ShoppingBag,
-  X
+  ShoppingBag
 } from 'lucide-vue-next';
 
 interface Product {
@@ -84,18 +83,9 @@ const openModal = (product?: Product) => {
 const calcCartons = ref(0);
 const calcTrays = ref(0);
 const calcPieces = ref(0);
-const cartonPurchasePrice = ref(0);
-const cartonSellingPrice = ref(0);
 
-const updatePiecePrices = () => {
-  const mFactor = editingProduct.value?.masterUnitFactor || 360;
-  if (cartonPurchasePrice.value > 0) {
-    editingProduct.value!.purchasePrice = cartonPurchasePrice.value / mFactor;
-  }
-  if (cartonSellingPrice.value > 0) {
-    editingProduct.value!.sellingPrice = cartonSellingPrice.value / mFactor;
-  }
-};
+
+
 
 const updateTotalStock = () => {
   const mFactor = editingProduct.value?.masterUnitFactor || 1;

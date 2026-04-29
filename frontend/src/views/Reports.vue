@@ -11,8 +11,7 @@ import {
   Printer,
   Download,
   AlertTriangle,
-  MessageCircle,
-  Share2
+  MessageCircle
 } from 'lucide-vue-next';
 
 const getLocalDate = (d: Date) => {

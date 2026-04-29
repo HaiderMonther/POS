@@ -9,11 +9,9 @@ import {
   Truck, 
   Plus, 
   Search,
-  X,
   Edit2,
   Trash2,
   Share2,
-  Download,
   CheckCircle2,
   QrCode
 } from 'lucide-vue-next';

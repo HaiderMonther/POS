@@ -9,13 +9,7 @@ import {
   Trash2, 
   Plus, 
   Minus, 
-  CheckCircle, 
-  Printer,
-  User as UserIcon,
-  Phone,
-  Package,
-  X,
-  DollarSign
+  Package
 } from 'lucide-vue-next';
 
 const cartStore = useCartStore();
@@ -26,7 +20,7 @@ const paymentType = ref('CASH');
 const customerName = ref('');
 const customerPhone = ref('');
 const isProcessing = ref(false);
-const isReceiptModalOpen = ref(false);
+
 const lastSaleReceipt = ref<any>(null);
 const allProducts = ref<any[]>([]);
 const customers = ref<any[]>([]);
@@ -37,10 +31,7 @@ const selectedProductForWeight = ref<any>(null);
 const weightInput = ref(1);
 const amountInput = ref(0);
 
-// Quick quantity state
-const isQtyModalOpen = ref(false);
-const selectedProductForQty = ref<any>(null);
-const qtyInput = ref(1);
+
 
 // Multi-unit state
 const isMultiModalOpen = ref(false);
@@ -168,20 +159,7 @@ const confirmAmountAdd = (amount?: number) => {
   focusSearch();
 };
 
-const openAmountModal = (product: any) => {
-  selectedProductForWeight.value = product;
-  amountInput.value = 1000;
-  isWeightModalOpen.value = true;
-};
 
-const confirmQtyAdd = (qty?: number) => {
-  const finalQty = qty || qtyInput.value;
-  if (finalQty <= 0) return;
-  
-  cartStore.addItem({ ...selectedProductForQty.value, quantity: finalQty });
-  isQtyModalOpen.value = false;
-  focusSearch();
-};
 
 const confirmMultiAdd = (factor: number) => {
   cartStore.addItem({ ...selectedProductForMulti.value, quantity: factor });
@@ -231,10 +209,7 @@ const handleCheckout = async () => {
   }
 };
 
-const handlePrint = () => {
-  window.print();
-  isReceiptModalOpen.value = false;
-};
+
 </script>
 
 <template>
