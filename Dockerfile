@@ -47,7 +47,7 @@ COPY --from=backend-builder /app/backend/node_modules/@prisma ./node_modules/@pr
 # Copy frontend build into backend's client folder
 COPY --from=frontend-builder /app/frontend/dist ./client
 
-EXPOSE 3000
+EXPOSE 3001
 
 # Run migrations and start the server
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
