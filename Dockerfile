@@ -50,5 +50,6 @@ COPY --from=frontend-builder /app/frontend/dist ./client
 ENV PORT=3001
 EXPOSE 3001
 
+
 # Run migrations and start the server
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
