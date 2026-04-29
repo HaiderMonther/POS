@@ -47,6 +47,7 @@ COPY --from=backend-builder /app/backend/node_modules/@prisma ./node_modules/@pr
 # Copy frontend build into backend's client folder
 COPY --from=frontend-builder /app/frontend/dist ./client
 
+ENV PORT=3001
 EXPOSE 3001
 
 # Run migrations and start the server
