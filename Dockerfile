@@ -42,5 +42,5 @@ EXPOSE 3001
 
 RUN rm -f .env backend/.env backend/prisma/.env prisma/.env
 
-# ✅ الإصلاح النهائي للمسار وللمايغريشن
-CMD ["sh", "-c", "npx prisma migrate resolve --applied 0_init || true && npx prisma migrate deploy || true && node dist/src/main.js"]
+# ✅ إنشاء الجداول وتشغيل التطبيق
+CMD ["sh", "-c", "npx prisma db push && node dist/src/main.js"]
