@@ -14,6 +14,7 @@ async function bootstrap() {
     }),
   );
 
+
   // Enable CORS for Frontend
   app.enableCors();
 
