@@ -15,7 +15,7 @@ import { UsersModule } from './users/users.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'client'),
+      rootPath: join(process.cwd(), 'client'),
     }),
     PrismaModule, 
     AuthModule, 
