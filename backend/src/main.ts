@@ -21,8 +21,8 @@ async function bootstrap() {
   // API Prefix
   app.setGlobalPrefix('api');
 
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 3001;
   await app.listen(port, '0.0.0.0');
-  console.log(`Application is running on: http://192.168.0.102:${port}/api`);
+  console.log(`Application is running on port: ${port}`);
 }
 bootstrap();
