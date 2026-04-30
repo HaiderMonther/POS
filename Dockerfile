@@ -53,5 +53,8 @@ ENV PORT=3001
 EXPOSE 3001
 
 
+# Remove any potential local .env files that might have been copied
+RUN rm -f .env backend/.env backend/prisma/.env prisma/.env
+
 # Run migrations and start the server
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
