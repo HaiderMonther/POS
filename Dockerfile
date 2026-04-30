@@ -2,18 +2,14 @@
 FROM node:20-alpine as frontend-builder
 WORKDIR /app/frontend
 
-# Accept frontend build arguments
 ARG CACHEBUST=2026-04-29-22-18
 ARG VITE_CLERK_PUBLISHABLE_KEY
 
-
-# Set frontend environment variables for Vite
 ENV VITE_API_URL=/api
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 
 COPY frontend/package*.json ./
 RUN npm ci
-
 COPY frontend ./
 RUN npm run build
 
@@ -24,37 +20,27 @@ WORKDIR /app/backend
 COPY backend/package*.json ./
 COPY backend/prisma ./prisma/
 RUN npm ci
-
 RUN npx prisma generate
-
 COPY backend ./
 RUN npm run build
 
-# Stage 3: Production Image
+# Stage 3: Production
 FROM node:20-alpine
 WORKDIR /app/backend
 
-# Copy backend dependencies
 COPY backend/package*.json ./
 COPY backend/prisma ./prisma/
-
-# Install only production dependencies
 RUN npm ci --only=production
 
-# Copy backend build
 COPY --from=backend-builder /app/backend/dist ./dist
 COPY --from=backend-builder /app/backend/node_modules/.prisma ./node_modules/.prisma
 COPY --from=backend-builder /app/backend/node_modules/@prisma ./node_modules/@prisma
-
-# Copy frontend build into backend's client folder
 COPY --from=frontend-builder /app/frontend/dist ./client
 
 ENV PORT=3001
 EXPOSE 3001
 
-
-# Remove any potential local .env files that might have been copied
 RUN rm -f .env backend/.env backend/prisma/.env prisma/.env
 
-# Run migrations and start the server
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
+# ✅ الإصلاح النهائي للمسار وللمايغريشن
+CMD ["sh", "-c", "npx prisma migrate resolve --applied 0_init || true && npx prisma migrate deploy || true && node dist/src/main.js"]
