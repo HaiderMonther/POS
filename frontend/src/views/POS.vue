@@ -92,7 +92,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown);
 });
 
-const handleGlobalKeydown = (e: KeyboardEvent) => {
+const handleGlobalKeydown = (_e: KeyboardEvent) => {
   // If any modal is open, let the user type there
   if (isCheckoutModalOpen.value || isWeightModalOpen.value || isMultiModalOpen.value) return;
 

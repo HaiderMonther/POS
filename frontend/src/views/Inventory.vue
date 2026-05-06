@@ -142,14 +142,7 @@ const calcPieces = ref(0);
 
 
 
-const updateTotalStock = () => {
-  const mFactor = editingProduct.value?.masterUnitFactor || 1;
-  const sFactor = editingProduct.value?.subUnitFactor || 1;
-  editingProduct.value!.stockQuantity = 
-    (Number(calcCartons.value) * mFactor) + 
-    (Number(calcTrays.value) * sFactor) + 
-    Number(calcPieces.value);
-};
+
 
 const saveProduct = async () => {
   try {
@@ -526,7 +519,7 @@ const deleteProduct = async (id: number) => {
               <div class="flex items-center gap-4">
                 <span class="text-xs text-slate-400">الإجمالي:</span>
                 <div class="px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-400 font-bold">
-                  {{ (calcCartons * editingProduct!.conversionFactor) + calcPieces }} قطعة
+                  {{ (calcCartons * (editingProduct?.conversionFactor || 1)) + calcPieces }} قطعة
                 </div>
               </div>
               <button @click="transferToStock" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[11px] font-bold text-slate-200 transition-colors">
