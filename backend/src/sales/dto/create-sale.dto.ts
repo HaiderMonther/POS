@@ -24,6 +24,10 @@ export class SaleItemDto {
   @IsString()
   @IsOptional()
   saleType?: string;
+
+  @IsString()
+  @IsOptional()
+  type?: 'SALE' | 'RETURN';
 }
 
 export class CreateSaleDto {

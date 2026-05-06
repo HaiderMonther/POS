@@ -51,7 +51,12 @@ export class ProductsService {
   async getLowStock() {
     return this.prisma.$queryRaw`
       SELECT * FROM "Product" 
-      WHERE "stockQuantity" <= "alertQuantity"
+      WHERE "stockQuantity" <= (
+        CASE 
+          WHEN "alertQuantityUnit" = 'wholesale' THEN "alertQuantity" * COALESCE("conversionFactor", 1)
+          ELSE "alertQuantity"
+        END
+      )
     `;
   }
 }

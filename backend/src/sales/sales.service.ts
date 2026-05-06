@@ -26,7 +26,15 @@ export class SalesService {
       if (!product) {
         throw new BadRequestException(`Product with ID ${item.productId} not found`);
       }
-      if (product.stockQuantity < item.quantity) {
+
+      // Calculate the actual quantity to deduct from stock
+      // If wholesale, deduct quantity * conversionFactor
+      let stockDeduction = item.quantity;
+      if (item.saleType === 'جملة' && product.conversionFactor) {
+        stockDeduction = item.quantity * product.conversionFactor;
+      }
+
+      if (product.stockQuantity < stockDeduction) {
         throw new BadRequestException(`الكمية غير كافية للمنتج: ${product.name}`);
       }
       
@@ -36,17 +44,34 @@ export class SalesService {
         sellingPrice = item.saleType === 'جملة' ? (product.wholesalePrice || product.sellingPrice) : product.sellingPrice;
       }
 
+      // Determine cost per piece for profit calculation
+      let costPerPiece = product.purchasePrice || 0;
+      if (product.purchasePriceUnit === 'wholesale' && product.conversionFactor) {
+        costPerPiece = costPerPiece / product.conversionFactor;
+      }
+
+      // Determine the cost of the unit being sold
+      let costOfUnitSold = costPerPiece;
+      if (item.saleType === 'جملة' && product.conversionFactor) {
+        costOfUnitSold = costPerPiece * product.conversionFactor;
+      }
+
       return {
         ...item,
-        purchasePriceAtSale: product.purchasePrice || 0,
+        stockDeduction,
+        purchasePriceAtSale: costOfUnitSold,
         sellingPriceAtSale: sellingPrice || 0,
         saleUnit: item.saleUnit || (item.saleType === 'جملة' ? (product.wholesaleUnit || product.unit) : product.unit),
+        type: item.type || 'SALE'
       };
     });
 
     // 3. Calculate total
     const subtotal = saleItemsData.reduce(
-      (sum, item) => sum + item.sellingPriceAtSale * item.quantity,
+      (sum, item) => {
+        const itemTotal = item.sellingPriceAtSale * item.quantity;
+        return item.type === 'RETURN' ? sum - itemTotal : sum + itemTotal;
+      },
       0,
     );
     const totalAmount = subtotal - discount;
@@ -66,6 +91,7 @@ export class SalesService {
               purchasePriceAtSale: item.purchasePriceAtSale,
               sellingPriceAtSale: item.sellingPriceAtSale,
               saleUnit: item.saleUnit,
+              type: item.type as any,
             })),
           },
         },
@@ -74,14 +100,25 @@ export class SalesService {
 
       // b. Update Stocks
       for (const item of saleItemsData) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stockQuantity: {
-              decrement: item.quantity,
+        if (item.type === 'RETURN') {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stockQuantity: {
+                increment: item.stockDeduction,
+              },
             },
-          },
-        });
+          });
+        } else {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stockQuantity: {
+                decrement: item.stockDeduction,
+              },
+            },
+          });
+        }
       }
 
       // c. Handle Debt if deferred
@@ -152,15 +189,21 @@ export class SalesService {
     });
 
     const totalSales = sales.reduce((sum, s) => sum + s.totalAmount, 0);
+    const cashSales = sales.filter(s => s.paymentType === 'CASH').reduce((sum, s) => sum + s.totalAmount, 0);
+    const deferredSales = sales.filter(s => s.paymentType === 'DEFERRED').reduce((sum, s) => sum + s.totalAmount, 0);
+
     const totalProfit = sales.reduce((sum, s) => {
       const saleProfit = s.items.reduce((pSum, item) => {
-        return pSum + (item.sellingPriceAtSale - item.purchasePriceAtSale) * item.quantity;
+        const itemProfit = (item.sellingPriceAtSale - item.purchasePriceAtSale) * item.quantity;
+        return item.type === 'RETURN' ? pSum - itemProfit : pSum + itemProfit;
       }, 0);
       return sum + saleProfit - (s.discount || 0);
     }, 0);
 
     return {
       totalSales,
+      cashSales,
+      deferredSales,
       totalProfit,
       count: sales.length,
     };

@@ -10,6 +10,7 @@ export interface CartItem {
   stockQuantity: number;
   unit: string;
   saleType: string; // 'مفرد' or 'جملة'
+  type: 'SALE' | 'RETURN';
 }
 
 export const useCartStore = defineStore('cart', () => {
@@ -17,7 +18,10 @@ export const useCartStore = defineStore('cart', () => {
   const discount = ref(0);
 
   const subtotal = computed(() => {
-    return items.value.reduce((sum, item) => sum + item.sellingPrice * item.quantity, 0);
+    return Math.round(items.value.reduce((sum, item) => {
+      const itemTotal = item.sellingPrice * item.quantity;
+      return item.type === 'RETURN' ? sum - itemTotal : sum + itemTotal;
+    }, 0));
   });
 
   const total = computed(() => {
@@ -26,10 +30,11 @@ export const useCartStore = defineStore('cart', () => {
 
   function addItem(product: any) {
     const saleType = product.saleType || 'مفرد';
+    const itemType = product.type || 'SALE';
     const salePrice = product.customPrice || (saleType === 'جملة' ? (product.wholesalePrice || product.sellingPrice) : product.sellingPrice);
     const saleUnit = product.customUnit || (saleType === 'جملة' ? (product.wholesaleUnit || product.unit) : product.unit);
     
-    const existing = items.value.find((i) => i.id === product.id && i.saleType === saleType);
+    const existing = items.value.find((i) => i.id === product.id && i.saleType === saleType && i.type === itemType);
     const addQty = product.quantity || 1;
     
     if (existing) {
@@ -39,25 +44,26 @@ export const useCartStore = defineStore('cart', () => {
         id: product.id,
         name: product.name,
         barcode: product.barcode,
-        sellingPrice: Number(salePrice) || 0,
+        sellingPrice: Number(String(salePrice).replace(/[.,]/g, '')) || 0,
         quantity: addQty,
         stockQuantity: product.stockQuantity,
         unit: saleUnit || 'قطعة',
         saleType: saleType,
+        type: itemType,
       });
     }
   }
 
-  function updateQuantity(id: number, saleType: string, qty: number) {
-    const item = items.value.find((i) => i.id === id && i.saleType === saleType);
+  function updateQuantity(id: number, saleType: string, type: 'SALE' | 'RETURN', qty: number) {
+    const item = items.value.find((i) => i.id === id && i.saleType === saleType && i.type === type);
     if (item) {
       if (qty < 1) qty = 1;
       item.quantity = qty;
     }
   }
 
-  function removeItem(id: number, saleType: string) {
-    items.value = items.value.filter((i) => !(i.id === id && i.saleType === saleType));
+  function removeItem(id: number, saleType: string, type: 'SALE' | 'RETURN') {
+    items.value = items.value.filter((i) => !(i.id === id && i.saleType === saleType && i.type === type));
   }
 
   function clear() {

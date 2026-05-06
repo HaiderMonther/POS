@@ -20,16 +20,21 @@ model Product {
   alertQuantity   Float       @default(5)
   unit            String      @default("UNIT") // "UNIT", "KG", or "MULTI"
   
+  unitType        String      @default("numeric") // "numeric", "weight", "volume"
+  
   // Multi-unit support (e.g. Eggs)
   isMultiUnit       Boolean    @default(false)
   subUnitName       String?    // e.g. "طبقة"
   subUnitFactor     Float?     // e.g. 30
   masterUnitName    String?    // e.g. "كارتون"
   masterUnitFactor  Float?     // e.g. 360
+  conversionFactor  Float?     @default(1)
 
   // Wholesale support
   wholesalePrice    Float?
   wholesaleUnit     String?
+  purchasePriceUnit String?    @default("retail") // "retail", "wholesale"
+  alertQuantityUnit String?    @default("retail") // "retail", "wholesale"
 
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
@@ -55,6 +60,7 @@ model SaleItem {
   purchasePriceAtSale Float
   sellingPriceAtSale  Float
   saleUnit            String?  // e.g. "مفرد" or "جملة" or the actual unit name
+  type                SaleItemType @default(SALE)
 }
 
 model Debt {
@@ -90,4 +96,9 @@ enum PaymentType {
 enum DebtType {
   CUSTOMER
   SUPPLIER
+}
+
+enum SaleItemType {
+  SALE
+  RETURN
 }

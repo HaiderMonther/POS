@@ -20,6 +20,7 @@ const paymentType = ref('CASH');
 const customerName = ref('');
 const customerPhone = ref('');
 const isProcessing = ref(false);
+const saleMode = ref<'SALE' | 'RETURN'>('SALE');
 
 const lastSaleReceipt = ref<any>(null);
 const allProducts = ref<any[]>([]);
@@ -75,6 +76,7 @@ const fetchCustomers = async () => {
 };
 
 const focusSearch = () => {
+  if (isCheckoutModalOpen.value || isWeightModalOpen.value || isMultiModalOpen.value) return;
   nextTick(() => searchInput.value?.focus());
 };
 
@@ -82,7 +84,23 @@ onMounted(() => {
   fetchProducts();
   fetchCustomers();
   focusSearch();
+  window.addEventListener('keydown', handleGlobalKeydown);
 });
+
+import { onUnmounted } from 'vue';
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown);
+});
+
+const handleGlobalKeydown = (e: KeyboardEvent) => {
+  // If any modal is open, let the user type there
+  if (isCheckoutModalOpen.value || isWeightModalOpen.value || isMultiModalOpen.value) return;
+
+  // If search input is not focused, focus it and append the key
+  if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'SELECT') {
+    focusSearch();
+  }
+};
 
 const handleSearch = async () => {
   const query = searchQuery.value.trim();
@@ -98,7 +116,7 @@ const handleSearch = async () => {
       return;
     }
     
-    cartStore.addItem(product);
+    cartStore.addItem({ ...product, type: saleMode.value });
     searchQuery.value = '';
     focusSearch();
   } catch (error: any) {
@@ -129,7 +147,7 @@ const addToCart = (product: any) => {
     amountInput.value = 0;
     isMultiModalOpen.value = true;
   } else {
-    cartStore.addItem(product);
+    cartStore.addItem({ ...product, type: saleMode.value });
   }
 };
 
@@ -138,22 +156,28 @@ const confirmWeightAdd = () => {
     toast.warning('يرجى إدخال وزن صحيح');
     return;
   }
-  cartStore.addItem({ ...selectedProductForWeight.value, quantity: weightInput.value });
+  cartStore.addItem({ ...selectedProductForWeight.value, quantity: weightInput.value, type: saleMode.value });
   isWeightModalOpen.value = false;
   focusSearch();
 };
 
 const confirmAmountAdd = (amount?: number) => {
-  const finalAmount = amount || amountInput.value;
-  if (finalAmount <= 0) return;
+  let finalAmountValue = amount || amountInput.value;
+  
+  // Clean amount: if it's a string from an input, remove thousands separators
+  if (typeof finalAmountValue === 'string') {
+    finalAmountValue = parseInt((finalAmountValue as string).replace(/[.,]/g, '')) || 0;
+  }
+  
+  if (finalAmountValue <= 0) return;
   
   const product = selectedProductForWeight.value || selectedProductForMulti.value;
   const price = product.saleType === 'جملة' ? (product.wholesalePrice || product.sellingPrice) : product.sellingPrice;
-  const calculatedQty = finalAmount / price;
+  const calculatedQty = finalAmountValue / price;
   
   const roundedQty = Math.round(calculatedQty * 1000) / 1000;
   
-  cartStore.addItem({ ...product, quantity: roundedQty });
+  cartStore.addItem({ ...product, quantity: roundedQty, type: saleMode.value });
   isWeightModalOpen.value = false;
   isMultiModalOpen.value = false;
   focusSearch();
@@ -162,7 +186,7 @@ const confirmAmountAdd = (amount?: number) => {
 
 
 const confirmMultiAdd = (factor: number) => {
-  cartStore.addItem({ ...selectedProductForMulti.value, quantity: factor });
+  cartStore.addItem({ ...selectedProductForMulti.value, quantity: factor, type: saleMode.value });
   isMultiModalOpen.value = false;
   focusSearch();
 };
@@ -178,7 +202,8 @@ const handleCheckout = async () => {
         quantity: i.quantity,
         price: i.sellingPrice,
         saleUnit: i.unit,
-        saleType: i.saleType
+        saleType: i.saleType,
+        type: i.type
       })),
       discount: cartStore.discount,
       paymentType: paymentType.value,
@@ -222,10 +247,28 @@ const handleCheckout = async () => {
           ref="searchInput"
           v-model="searchQuery"
           @keyup.enter="handleSearch"
+          @blur="focusSearch"
           type="text" 
           placeholder="امسح الباركود أو ابحث عن منتج..."
           class="w-full bg-slate-900 border border-slate-700 text-white rounded-xl py-3 pr-14 pl-4 focus:ring-2 focus:ring-teal-500/50 outline-none transition-all"
         />
+      </div>
+
+      <div class="flex p-1 bg-slate-900 rounded-xl border border-slate-700 min-w-[200px]">
+        <button 
+          @click="saleMode = 'SALE'" 
+          class="flex-1 py-2 px-4 rounded-lg transition-all font-bold text-sm flex items-center justify-center gap-2"
+          :class="saleMode === 'SALE' ? 'bg-teal-600 text-white' : 'text-slate-400 hover:bg-slate-800'"
+        >
+          <span>بيع</span>
+        </button>
+        <button 
+          @click="saleMode = 'RETURN'" 
+          class="flex-1 py-2 px-4 rounded-lg transition-all font-bold text-sm flex items-center justify-center gap-2"
+          :class="saleMode === 'RETURN' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-slate-800'"
+        >
+          <span>ارجاع</span>
+        </button>
       </div>
     </div>
 
@@ -254,8 +297,9 @@ const handleCheckout = async () => {
                 <!-- Retail Button -->
                 <button 
                   @click="addToCart({ ...p, saleType: 'مفرد' })"
-                  class="flex items-center justify-between bg-teal-500/10 hover:bg-teal-500 text-teal-400 hover:text-white px-2 py-1.5 rounded-lg transition-all text-xs border border-teal-500/20"
-                  :disabled="p.stockQuantity <= 0"
+                  :class="saleMode === 'SALE' ? 'bg-teal-500/10 hover:bg-teal-500 text-teal-400' : 'bg-red-500/10 hover:bg-red-500 text-red-500'"
+                  class="flex items-center justify-between hover:text-white px-2 py-1.5 rounded-lg transition-all text-xs border border-teal-500/20"
+                  :disabled="p.stockQuantity <= 0 && saleMode === 'SALE'"
                 >
                   <span class="font-medium">{{ p.unit }}:</span>
                   <span class="font-bold">{{ p.sellingPrice.toLocaleString() }}</span>
@@ -265,8 +309,9 @@ const handleCheckout = async () => {
                 <button 
                   v-if="p.wholesalePrice"
                   @click="addToCart({ ...p, saleType: 'جملة' })"
-                  class="flex items-center justify-between bg-amber-500/10 hover:bg-amber-500 text-amber-500 hover:text-white px-2 py-1.5 rounded-lg transition-all text-xs border border-amber-500/20"
-                  :disabled="p.stockQuantity <= 0"
+                  :class="saleMode === 'SALE' ? 'bg-amber-500/10 hover:bg-amber-500 text-amber-500' : 'bg-red-500/10 hover:bg-red-500 text-red-500'"
+                  class="flex items-center justify-between hover:text-white px-2 py-1.5 rounded-lg transition-all text-xs border border-amber-500/20"
+                  :disabled="p.stockQuantity <= 0 && saleMode === 'SALE'"
                 >
                   <span class="font-medium">{{ p.wholesaleUnit || 'جملة' }}:</span>
                   <span class="font-bold">{{ p.wholesalePrice.toLocaleString() }}</span>
@@ -300,23 +345,28 @@ const handleCheckout = async () => {
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-700/50">
-                <tr v-for="item in cartStore.items" :key="item.id + item.saleType">
+                <tr v-for="item in cartStore.items" :key="item.id + item.saleType + item.type">
                   <td class="py-4 px-4">
                     <div class="flex flex-col">
-                      <span class="font-bold">{{ item.name }}</span>
+                      <div class="flex items-center gap-2">
+                        <span class="font-bold">{{ item.name }}</span>
+                        <span v-if="item.type === 'RETURN'" class="bg-red-500/20 text-red-400 text-[10px] px-1.5 py-0.5 rounded border border-red-500/30">ارجاع</span>
+                      </div>
                       <span class="text-[10px] text-slate-500">{{ item.saleType }} — {{ item.unit }}</span>
                     </div>
                   </td>
                   <td class="py-4 px-4 text-center">
                     <div class="flex items-center justify-center gap-2">
-                      <button @click="cartStore.updateQuantity(item.id, item.saleType, item.quantity + 1)" class="p-1 hover:bg-slate-700 rounded"><Plus :size="12"/></button>
+                      <button @click="cartStore.updateQuantity(item.id, item.saleType, item.type, item.quantity + 1)" class="p-1 hover:bg-slate-700 rounded"><Plus :size="12"/></button>
                       <span>{{ item.quantity }}</span>
-                      <button @click="cartStore.updateQuantity(item.id, item.saleType, item.quantity - 1)" class="p-1 hover:bg-slate-700 rounded"><Minus :size="12"/></button>
+                      <button @click="cartStore.updateQuantity(item.id, item.saleType, item.type, item.quantity - 1)" class="p-1 hover:bg-slate-700 rounded"><Minus :size="12"/></button>
                     </div>
                   </td>
-                  <td class="py-4 px-4 text-center font-bold">{{ (item.sellingPrice * item.quantity).toLocaleString() }}</td>
+                  <td class="py-4 px-4 text-center font-bold" :class="item.type === 'RETURN' ? 'text-red-400' : ''">
+                    {{ item.type === 'RETURN' ? '-' : '' }}{{ (item.sellingPrice * item.quantity).toLocaleString() }}
+                  </td>
                   <td class="py-4 px-4 text-center">
-                    <button @click="cartStore.removeItem(item.id, item.saleType)" class="text-red-400 hover:text-red-300 transition-colors">
+                    <button @click="cartStore.removeItem(item.id, item.saleType, item.type)" class="text-red-400 hover:text-red-300 transition-colors">
                       <Trash2 :size="18" />
                     </button>
                   </td>
@@ -379,11 +429,11 @@ const handleCheckout = async () => {
         <button @click="amountInput = 1000" class="flex-1 py-2 rounded-lg transition-all" :class="amountInput > 0 ? 'bg-teal-600' : 'hover:bg-slate-800'">بالمبلغ</button>
       </div>
       <div v-if="amountInput === 0">
-        <input v-model.number="weightInput" type="number" step="0.001" class="w-full bg-slate-900 border-2 border-teal-500/50 text-white text-4xl rounded-2xl py-6 text-center outline-none focus:border-teal-500" autofocus />
+        <input v-model="weightInput" type="number" step="0.001" class="w-full bg-slate-900 border-2 border-teal-500/50 text-white text-4xl rounded-2xl py-6 text-center outline-none focus:border-teal-500" autofocus />
         <button @click="confirmWeightAdd" class="w-full mt-4 bg-teal-600 hover:bg-teal-700 py-4 rounded-2xl font-bold text-xl transition-all">إضافة</button>
       </div>
       <div v-else>
-        <input v-model.number="amountInput" type="number" class="w-full bg-slate-900 border-2 border-amber-500/50 text-white text-4xl rounded-2xl py-6 text-center outline-none focus:border-amber-500" autofocus />
+        <input v-model="amountInput" type="text" class="w-full bg-slate-900 border-2 border-amber-500/50 text-white text-4xl rounded-2xl py-6 text-center outline-none focus:border-amber-500" autofocus />
         <div class="grid grid-cols-3 gap-2 mt-4">
           <button v-for="a in [250, 500, 1000, 1500, 2000, 5000]" :key="a" @click="confirmAmountAdd(a)" class="bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-bold transition-colors">{{ a }}</button>
         </div>
@@ -415,7 +465,7 @@ const handleCheckout = async () => {
         </button>
       </div>
       <div v-else>
-        <input v-model.number="amountInput" type="number" class="w-full bg-slate-900 border-2 border-indigo-500/50 text-white text-4xl rounded-2xl py-6 text-center outline-none focus:border-indigo-500" />
+        <input v-model="amountInput" type="text" class="w-full bg-slate-900 border-2 border-indigo-500/50 text-white text-4xl rounded-2xl py-6 text-center outline-none focus:border-indigo-500" />
         <div class="grid grid-cols-3 gap-2 mt-4">
           <button v-for="a in [250, 500, 1000, 2000, 5000]" :key="a" @click="confirmAmountAdd(a)" class="bg-slate-700 hover:bg-slate-600 py-3 rounded-lg font-bold transition-colors">{{ a }}</button>
         </div>

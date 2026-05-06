@@ -23,11 +23,15 @@ interface Product {
   stockQuantity: number;
   alertQuantity: number;
   unit: string;
+  unitType: 'numeric' | 'weight' | 'volume';
   isMultiUnit: boolean;
   subUnitName: string;
   subUnitFactor: number;
   masterUnitName: string;
   masterUnitFactor: number;
+  conversionFactor: number;
+  purchasePriceUnit: 'retail' | 'wholesale';
+  alertQuantityUnit: 'retail' | 'wholesale';
 }
 
 const products = ref<Product[]>([]);
@@ -64,20 +68,71 @@ const openModal = (product?: Product) => {
     purchasePrice: 0,
     sellingPrice: 0,
     wholesalePrice: 0,
-    wholesaleUnit: '',
+    wholesaleUnit: 'علبة',
     stockQuantity: 0,
     alertQuantity: 5,
     unit: 'قطعة',
+    unitType: 'numeric',
     isMultiUnit: false,
     subUnitName: 'طبقة',
     subUnitFactor: 30,
     masterUnitName: 'كارتون',
-    masterUnitFactor: 360
+    masterUnitFactor: 360,
+    conversionFactor: 12,
+    purchasePriceUnit: 'retail',
+    alertQuantityUnit: 'retail'
   };
   calcCartons.value = 0;
   calcTrays.value = 0;
   calcPieces.value = 0;
   isModalOpen.value = true;
+};
+
+const parsePrice = (val: any): number => {
+  if (val === null || val === undefined || val === '') return 0;
+  if (typeof val === 'number') return val;
+  const clean = String(val).replace(/[.,]/g, '');
+  return parseInt(clean) || 0;
+};
+
+const costPerPiece = computed(() => {
+  if (!editingProduct.value) return 0;
+  const price = parsePrice(editingProduct.value.purchasePrice);
+  if (editingProduct.value.purchasePriceUnit === 'wholesale') {
+    return price / (editingProduct.value.conversionFactor || 1);
+  }
+  return price;
+});
+
+const costOfWholesaleUnit = computed(() => {
+  if (!editingProduct.value) return 0;
+  const price = parsePrice(editingProduct.value.purchasePrice);
+  if (editingProduct.value.purchasePriceUnit === 'retail') {
+    return price * (editingProduct.value.conversionFactor || 1);
+  }
+  return price;
+});
+
+const profitMargin = computed(() => {
+  if (!editingProduct.value || costPerPiece.value === 0) return 0;
+  const sellingPrice = parsePrice(editingProduct.value.sellingPrice);
+  const margin = ((sellingPrice - costPerPiece.value) / costPerPiece.value) * 100;
+  return isNaN(margin) ? 0 : Math.round(margin);
+});
+
+const wholesaleProfitMargin = computed(() => {
+  if (!editingProduct.value || costOfWholesaleUnit.value === 0 || !editingProduct.value.wholesalePrice) return 0;
+  const sellingPrice = parsePrice(editingProduct.value.wholesalePrice);
+  const margin = ((sellingPrice - costOfWholesaleUnit.value) / costOfWholesaleUnit.value) * 100;
+  return isNaN(margin) ? 0 : Math.round(margin);
+});
+
+const transferToStock = () => {
+  if (!editingProduct.value) return;
+  const total = (Number(calcCartons.value) * (editingProduct.value.conversionFactor || 1)) + 
+                (Number(calcTrays.value) * (editingProduct.value.subUnitFactor || 1)) + 
+                Number(calcPieces.value);
+  editingProduct.value.stockQuantity = total;
 };
 
 const calcCartons = ref(0);
@@ -99,6 +154,13 @@ const updateTotalStock = () => {
 const saveProduct = async () => {
   try {
     const { id, createdAt, updatedAt, ...payload } = editingProduct.value as any;
+    
+    payload.purchasePrice = parsePrice(payload.purchasePrice);
+    payload.sellingPrice = parsePrice(payload.sellingPrice);
+    if (payload.wholesalePrice) {
+      payload.wholesalePrice = parsePrice(payload.wholesalePrice);
+    }
+
     if (editingProduct.value?.id) {
       await api.patch(`/products/${editingProduct.value.id}`, payload);
     } else {
@@ -161,7 +223,10 @@ const deleteProduct = async (id: number) => {
           <div>
             <div class="text-slate-400 text-sm">نواقص المخزون</div>
             <div class="text-2xl font-bold text-amber-500">
-              {{ products.filter(p => p.stockQuantity <= p.alertQuantity).length }}
+              {{ products.filter(p => {
+                const limit = p.alertQuantityUnit === 'wholesale' ? p.alertQuantity * (p.conversionFactor || 1) : p.alertQuantity;
+                return p.stockQuantity <= limit;
+              }).length }}
             </div>
           </div>
         </div>
@@ -205,10 +270,10 @@ const deleteProduct = async (id: number) => {
               <td class="py-4 px-6">
                 <div 
                   class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold"
-                  :class="p.stockQuantity <= p.alertQuantity ? 'bg-red-500/10 text-red-400' : 'bg-teal-500/10 text-teal-400'"
+                  :class="p.stockQuantity <= (p.alertQuantityUnit === 'wholesale' ? p.alertQuantity * (p.conversionFactor || 1) : p.alertQuantity) ? 'bg-red-500/10 text-red-400' : 'bg-teal-500/10 text-teal-400'"
                 >
-                  <AlertTriangle v-if="p.stockQuantity <= p.alertQuantity" :size="12" />
-                  {{ p.stockQuantity }} {{ p.unit === 'KG' ? 'كغم' : 'قطعة' }}
+                  <AlertTriangle v-if="p.stockQuantity <= (p.alertQuantityUnit === 'wholesale' ? p.alertQuantity * (p.conversionFactor || 1) : p.alertQuantity)" :size="12" />
+                  {{ p.stockQuantity }} {{ p.unitType === 'weight' ? 'كغم' : (p.unitType === 'volume' ? 'لتر' : 'قطعة') }}
                 </div>
               </td>
               <td class="py-4 px-6">
@@ -230,79 +295,298 @@ const deleteProduct = async (id: number) => {
       </div>
     </div>
 
-    <!-- Add/Edit Modal -->
+    <!-- Add/Edit Modal (Enhanced) -->
     <BaseModal 
       :show="isModalOpen" 
       :title="editingProduct?.id ? 'تعديل منتج' : 'إضافة منتج جديد'" 
-      maxWidth="600px" 
+      maxWidth="650px" 
       @close="isModalOpen = false"
     >
-      <div class="grid grid-cols-4 gap-4">
-        <div class="col-span-2">
-          <label class="block text-sm text-slate-400 mb-1">اسم المادة</label>
-          <input v-model="editingProduct!.name" type="text" class="input-field" placeholder="مثال: بيض، جكاير..." />
-        </div>
-        <div>
-          <label class="block text-sm text-slate-400 mb-1">وحدة المفرد</label>
-          <input v-model="editingProduct!.unit" type="text" class="input-field" placeholder="مثال: طبقة، تكة" />
-        </div>
-        <div>
-          <label class="block text-sm text-slate-400 mb-1">سعر المفرد (د.ع)</label>
-          <input v-model.number="editingProduct!.sellingPrice" type="number" class="input-field" />
-        </div>
-        
-        <div class="col-span-1">
-          <label class="block text-sm text-slate-400 mb-1">سعر الجملة (د.ع)</label>
-          <input v-model.number="editingProduct!.wholesalePrice" type="number" class="input-field" />
-        </div>
-        <div class="col-span-3">
-          <label class="block text-sm text-slate-400 mb-1">وحدة الجملة (اختياري)</label>
-          <input v-model="editingProduct!.wholesaleUnit" type="text" class="input-field" placeholder="مثال: كارتون، علبة" />
-        </div>
-        <div class="flex items-end">
-          <button @click="saveProduct" class="btn btn-primary w-full h-[42px] flex items-center justify-center gap-2">
-            <Plus :size="18" />
-            {{ editingProduct?.id ? 'تعديل' : 'إضافة المادة' }}
-          </button>
-        </div>
-
-        <div class="col-span-2">
-          <label class="block text-sm text-slate-400 mb-1">الباركود</label>
-          <input v-model="editingProduct!.barcode" type="text" class="input-field" placeholder="123456789" />
-        </div>
-        <div>
-          <label class="block text-sm text-slate-400 mb-1">الكمية الحالية</label>
-          <input v-model.number="editingProduct!.stockQuantity" type="number" class="input-field" />
-        </div>
-        <div>
-          <label class="block text-sm text-slate-400 mb-1">سعر الشراء</label>
-          <input v-model.number="editingProduct!.purchasePrice" type="number" class="input-field" />
-        </div>
-        <div>
-          <label class="block text-sm text-slate-400 mb-1">حد التنبيه</label>
-          <input v-model.number="editingProduct!.alertQuantity" type="number" step="0.01" class="input-field" />
-        </div>
-
-        <!-- Stock Helper for Multi-Unit (Optional - keeping it for now but simplified) -->
-        <div v-if="editingProduct!.isMultiUnit" class="col-span-4 bg-teal-500/5 p-4 rounded-xl border border-teal-500/20">
-          <label class="block text-xs font-bold text-teal-400 mb-2">مساعد حساب المخزون</label>
-          <div class="grid grid-cols-3 gap-2">
+      <div class="space-y-6 max-h-[85vh] overflow-y-auto px-2 custom-scrollbar">
+        <!-- Section 1: Identification -->
+        <div class="space-y-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold">1</span>
+            <h3 class="text-sm font-bold text-slate-300">المعلومات التعريفية</h3>
+            <span class="text-[10px] bg-amber-500/20 text-amber-500 px-2 py-0.5 rounded-full">أساسي</span>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="text-[10px] text-slate-500">عدد ال{{ editingProduct!.masterUnitName }}</label>
-              <input type="number" @input="updateTotalStock" v-model="calcCartons" class="input-field text-xs" placeholder="0" />
+              <label class="block text-xs text-slate-400 mb-1.5">اسم المادة</label>
+              <input v-model="editingProduct!.name" type="text" class="input-field" placeholder="مثال: علبة حليب، كيس رز..." />
             </div>
             <div>
-              <label class="text-[10px] text-slate-500">عدد ال{{ editingProduct!.subUnitName }}</label>
-              <input type="number" @input="updateTotalStock" v-model="calcTrays" class="input-field text-xs" placeholder="0" />
-            </div>
-            <div>
-              <label class="text-[10px] text-slate-500">عدد المفرد</label>
-              <input type="number" @input="updateTotalStock" v-model="calcPieces" class="input-field text-xs" placeholder="0" />
+              <label class="block text-xs text-slate-400 mb-1.5">الباركود</label>
+              <input v-model="editingProduct!.barcode" type="text" class="input-field" placeholder="123456789" />
+              <p class="text-[10px] text-slate-500 mt-1">إذا لا يوجد باركود، اكتب رقماً تسلسلياً</p>
             </div>
           </div>
         </div>
-      </div>
 
+        <!-- Section 2: Unit Type -->
+        <div class="space-y-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold">2</span>
+            <h3 class="text-sm font-bold text-slate-300">نوع الوحدة</h3>
+            <span class="text-[10px] bg-indigo-500/20 text-indigo-500 px-2 py-0.5 rounded-full">جديد — يحدد طريقة الحساب</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <button 
+              @click="editingProduct!.unitType = 'numeric'"
+              :class="editingProduct!.unitType === 'numeric' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'"
+              class="py-2.5 rounded-xl text-xs font-bold transition-all border border-slate-700/50"
+            >
+              عددي (قطعة، كيس، علبة)
+            </button>
+            <button 
+              @click="editingProduct!.unitType = 'weight'"
+              :class="editingProduct!.unitType === 'weight' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'"
+              class="py-2.5 rounded-xl text-xs font-bold transition-all border border-slate-700/50"
+            >
+              وزن (كيلو، غرام)
+            </button>
+            <button 
+              @click="editingProduct!.unitType = 'volume'"
+              :class="editingProduct!.unitType === 'volume' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'"
+              class="py-2.5 rounded-xl text-xs font-bold transition-all border border-slate-700/50"
+            >
+              حجم (لتر، مل)
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-400 italic">
+            {{ editingProduct!.unitType === 'numeric' ? 'المواد العددية تُحسب بعدد القطع الصحيح فقط — لا يمكن بيع نصف قطعة' : 'المواد الوزنية/الحجمية تسمح بالكسور عند البيع' }}
+          </p>
+        </div>
+
+        <!-- Section 3: Prices and Units -->
+        <div class="space-y-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold">3</span>
+            <h3 class="text-sm font-bold text-slate-300">الأسعار والوحدات</h3>
+            <span class="text-[10px] bg-emerald-500/20 text-emerald-500 px-2 py-0.5 rounded-full">أساسي</span>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1.5">سعر المفرد (د.ع)</label>
+                <input v-model="editingProduct!.sellingPrice" type="text" class="input-field" placeholder="62500" />
+                <p class="text-[10px] text-slate-500 mt-1">السعر الذي تبيعه للزبون بالقطعة</p>
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1.5">وحدة المفرد</label>
+                <input v-model="editingProduct!.unit" type="text" class="input-field" placeholder="قطعة" />
+              </div>
+            </div>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1.5">سعر الجملة (د.ع) (اختياري)</label>
+                <input v-model="editingProduct!.wholesalePrice" type="text" class="input-field" placeholder="3000" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1.5">وحدة الجملة (اختياري)</label>
+                <input v-model="editingProduct!.wholesaleUnit" type="text" class="input-field" placeholder="علبة" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Conversion Factor Box -->
+          <div class="bg-indigo-900/20 border border-indigo-500/30 rounded-xl p-4 flex items-center justify-between">
+            <div class="space-y-1">
+              <h4 class="text-[11px] font-bold text-indigo-400">معامل التحويل بين المفرد والجملة</h4>
+              <p class="text-[10px] text-indigo-300/70">النظام يستخدم هذا الرقم لتحديث المخزون تلقائياً عند البيع بالجملة</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-slate-300">1 {{ editingProduct!.wholesaleUnit || 'جملة' }}</span>
+              <div class="relative">
+                <input v-model.number="editingProduct!.conversionFactor" type="number" class="w-16 bg-slate-900 border border-indigo-500/50 rounded-lg py-1 text-center text-sm font-bold text-white focus:ring-1 focus:ring-indigo-500 outline-none" />
+              </div>
+              <span class="text-xs text-slate-300">{{ editingProduct!.unit || 'مفرد' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4: Purchase and Stock -->
+        <div class="space-y-4">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold">4</span>
+            <h3 class="text-sm font-bold text-slate-300">الشراء والمخزون</h3>
+            <span class="text-[10px] bg-rose-500/20 text-rose-500 px-2 py-0.5 rounded-full">أساسي</span>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1.5">سعر الشراء (د.ع)</label>
+              <div class="flex gap-2">
+                <select v-model="editingProduct!.purchasePriceUnit" class="bg-slate-800 border border-slate-700 rounded-xl px-2 text-xs text-slate-300 outline-none focus:ring-1 focus:ring-indigo-500">
+                  <option value="retail">{{ editingProduct!.unit }} (مفرد)</option>
+                  <option value="wholesale">{{ editingProduct!.wholesaleUnit }} (جملة)</option>
+                </select>
+                <input v-model="editingProduct!.purchasePrice" type="text" class="input-field flex-1" placeholder="60000" />
+              </div>
+              <p class="text-[11px] font-bold text-slate-500 mt-2">سعر الشراء — يُستخدم لحساب الأرباح</p>
+            </div>
+
+            <!-- Margin Info Box -->
+            <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4 space-y-4">
+              <div class="flex items-center justify-between text-[11px] text-slate-400">
+                <span class="font-bold text-indigo-400">تحليل الأرباح المتوقعة</span>
+              </div>
+              
+              <!-- Retail Margin -->
+              <div class="flex items-end justify-between border-b border-slate-800 pb-3">
+                <div class="flex gap-6">
+                  <div>
+                    <div class="text-[10px] text-slate-500 mb-1">تكلفة القطعة:</div>
+                    <div class="text-sm font-bold text-emerald-400">{{ costPerPiece.toLocaleString() }} د.ع</div>
+                  </div>
+                  <div>
+                    <div class="text-[10px] text-slate-500 mb-1">ربح المفرد:</div>
+                    <div class="text-sm font-bold text-emerald-400">{{ (parsePrice(editingProduct?.sellingPrice) - costPerPiece).toLocaleString() }} د.ع</div>
+                  </div>
+                </div>
+                <div class="flex flex-col items-end">
+                  <span class="text-[9px] text-slate-500 mb-1">هامش المفرد</span>
+                  <div class="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full text-emerald-400 text-xs font-bold">
+                    {{ profitMargin }}%
+                  </div>
+                </div>
+              </div>
+
+              <!-- Wholesale Margin -->
+              <div v-if="editingProduct?.wholesalePrice" class="flex items-end justify-between pt-1">
+                <div class="flex gap-6">
+                  <div>
+                    <div class="text-[10px] text-slate-500 mb-1">تكلفة الجملة ({{ editingProduct.wholesaleUnit }}):</div>
+                    <div class="text-sm font-bold text-amber-500">{{ costOfWholesaleUnit.toLocaleString() }} د.ع</div>
+                  </div>
+                  <div>
+                    <div class="text-[10px] text-slate-500 mb-1">ربح الجملة:</div>
+                    <div class="text-sm font-bold text-amber-500">{{ (parsePrice(editingProduct?.wholesalePrice) - costOfWholesaleUnit).toLocaleString() }} د.ع</div>
+                  </div>
+                </div>
+                <div class="flex flex-col items-end">
+                  <span class="text-[9px] text-slate-500 mb-1">هامش الجملة</span>
+                  <div class="px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-full text-amber-500 text-xs font-bold">
+                    {{ wholesaleProfitMargin }}%
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1.5">الكمية الحالية</label>
+                <input v-model.number="editingProduct!.stockQuantity" type="number" class="input-field" placeholder="150" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1.5">حد التنبيه</label>
+                <div class="flex gap-2">
+                  <select v-model="editingProduct!.alertQuantityUnit" class="bg-slate-800 border border-slate-700 rounded-xl px-2 text-xs text-slate-300 outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="retail">مفرد</option>
+                    <option value="wholesale">جملة</option>
+                  </select>
+                  <input v-model.number="editingProduct!.alertQuantity" type="number" class="input-field flex-1" placeholder="5" />
+                </div>
+              </div>
+            </div>
+            <p class="text-[11px] text-slate-400 italic text-center">
+              يتحول لون الكمية للأحمر عند الوصول لحد التنبيه — تأكد من اختيار الوحدة الصحيحة (مفرد أو جملة)
+            </p>
+          </div>
+        </div>
+
+        <!-- Section 5: Calculator -->
+        <div class="space-y-4">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold">5</span>
+            <h3 class="text-sm font-bold text-slate-300">حاسبة الكميات</h3>
+            <span class="text-[10px] bg-teal-500/20 text-teal-500 px-2 py-0.5 rounded-full">اختياري</span>
+          </div>
+
+          <div class="bg-slate-900/50 border border-slate-700/50 rounded-2xl p-5 space-y-4">
+            <p class="text-[11px] text-slate-400">إذا وصلت بضاعة جديدة، اكتب الكميات وسيحسب النظام الإجمالي</p>
+            <div class="grid grid-cols-7 items-center gap-2 text-center">
+              <div class="col-span-2">
+                <label class="text-[10px] text-slate-500 block mb-1">كراتين</label>
+                <input v-model.number="calcCartons" type="number" class="input-field text-center text-sm" />
+              </div>
+              <div class="text-slate-500">×</div>
+              <div class="col-span-1">
+                <label class="text-[10px] text-slate-500 block mb-1">{{ editingProduct!.unit }}/{{ editingProduct!.wholesaleUnit }}</label>
+                <input v-model.number="editingProduct!.conversionFactor" type="number" class="input-field text-center text-sm" />
+              </div>
+              <div class="text-slate-500">+</div>
+              <div class="col-span-2">
+                <label class="text-[10px] text-slate-500 block mb-1">قطع مفردة</label>
+                <input v-model.number="calcPieces" type="number" class="input-field text-center text-sm" />
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-2">
+              <div class="flex items-center gap-4">
+                <span class="text-xs text-slate-400">الإجمالي:</span>
+                <div class="px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-400 font-bold">
+                  {{ (calcCartons * editingProduct!.conversionFactor) + calcPieces }} قطعة
+                </div>
+              </div>
+              <button @click="transferToStock" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[11px] font-bold text-slate-200 transition-colors">
+                نقل للكمية الحالية
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="flex gap-3 pt-4 sticky bottom-0 bg-slate-900 py-4 border-t border-slate-800">
+          <button @click="saveProduct" class="btn btn-primary flex-1 py-3 shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2">
+            <Plus v-if="!editingProduct?.id" :size="20" />
+            <Edit2 v-else :size="20" />
+            {{ editingProduct?.id ? 'تعديل المادة' : 'إضافة المادة للمخزن' }}
+          </button>
+          <button @click="isModalOpen = false" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 font-bold transition-all">
+            إلغاء
+          </button>
+        </div>
+      </div>
     </BaseModal>
   </div>
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.4);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
+
+.input-field {
+  @apply w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500/50 transition-all;
+}
+
+.animate-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 0.75rem center;
+  background-size: 1rem;
+  padding-left: 2.5rem !important;
+}
+</style>

@@ -14,6 +14,8 @@ import {
 const authStore = useAuthStore();
 const stats = ref<any>({
   totalSales: 0,
+  cashSales: 0,
+  deferredSales: 0,
   totalProfit: 0,
   receivables: 0,
   payables: 0,
@@ -27,11 +29,12 @@ const isLoading = ref(true);
 const fetchDashboardData = async () => {
   isLoading.value = true;
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Get start of today in local time
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
     
     const requests = [
-      api.get(`/sales/reports?start=${today.toISOString()}`),
+      api.get(`/sales/reports?start=${startOfToday.toISOString()}`),
       api.get('/products'),
       api.get('/sales'),
     ];
@@ -68,13 +71,25 @@ onMounted(fetchDashboardData);
     <!-- Stats Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       <!-- Sales Today -->
-      <div class="glass-card bg-slate-800/40 p-6 flex items-center justify-between group hover:border-teal-500/30 transition-all">
-        <div>
-          <p class="text-slate-400 text-sm font-medium mb-1">مبيعات اليوم</p>
-          <h3 class="text-3xl font-extrabold text-white">{{ stats.totalSales.toLocaleString() }} <span class="text-sm font-normal text-slate-500">د.ع</span></h3>
+      <div class="glass-card bg-slate-800/40 p-6 flex flex-col justify-between group hover:border-teal-500/30 transition-all">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <p class="text-slate-400 text-sm font-medium mb-1">مبيعات اليوم</p>
+            <h3 class="text-3xl font-extrabold text-white">{{ stats.totalSales.toLocaleString() }} <span class="text-sm font-normal text-slate-500">د.ع</span></h3>
+          </div>
+          <div class="p-3 bg-teal-500/10 rounded-2xl text-teal-400 group-hover:scale-110 transition-transform">
+            <TrendingUp :size="28" />
+          </div>
         </div>
-        <div class="p-3 bg-teal-500/10 rounded-2xl text-teal-400 group-hover:scale-110 transition-transform">
-          <TrendingUp :size="28" />
+        <div class="flex gap-4 pt-4 border-t border-slate-700/50">
+          <div class="flex flex-col">
+            <span class="text-[10px] text-slate-500">نقدي</span>
+            <span class="text-sm font-bold text-teal-400">{{ (stats.cashSales || 0).toLocaleString() }}</span>
+          </div>
+          <div class="flex flex-col border-r border-slate-700/50 pr-4">
+            <span class="text-[10px] text-slate-500">آجل</span>
+            <span class="text-sm font-bold text-amber-500">{{ (stats.deferredSales || 0).toLocaleString() }}</span>
+          </div>
         </div>
       </div>
 

@@ -54,4 +54,20 @@ export class CreateProductDto {
   @IsString()
   @IsOptional()
   wholesaleUnit?: string;
+
+  @IsString()
+  @IsOptional()
+  unitType?: string;
+
+  @IsNumber()
+  @IsOptional()
+  conversionFactor?: number;
+
+  @IsString()
+  @IsOptional()
+  purchasePriceUnit?: string;
+
+  @IsString()
+  @IsOptional()
+  alertQuantityUnit?: string;
 }

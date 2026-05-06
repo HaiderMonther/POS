@@ -35,15 +35,22 @@ const shortages = computed(() => {
 const generateReport = async () => {
   isLoading.value = true;
   try {
+    // Parse the local dates correctly by splitting the string to avoid browser UTC defaults
+    const [sYear, sMonth, sDay] = startDate.value.split('-').map(Number);
+    const [eYear, eMonth, eDay] = endDate.value.split('-').map(Number);
+    
+    const start = new Date(sYear, sMonth - 1, sDay, 0, 0, 0, 0);
+    const end = new Date(eYear, eMonth - 1, eDay, 23, 59, 59, 999);
+
     const [reportRes, salesRes, productsRes] = await Promise.all([
-      api.get(`/sales/reports?start=${startDate.value}T00:00:00Z&end=${endDate.value}T23:59:59Z`),
+      api.get(`/sales/reports?start=${start.toISOString()}&end=${end.toISOString()}`),
       api.get('/sales'),
       api.get('/products')
     ]);
     report.value = reportRes.data;
     sales.value = salesRes.data.filter((s: any) => {
-      const sDate = getLocalDate(new Date(s.createdAt));
-      return sDate >= startDate.value && sDate <= endDate.value;
+      const saleDate = new Date(s.createdAt);
+      return saleDate >= start && saleDate <= end;
     });
     allProducts.value = productsRes.data;
   } catch (error) {
@@ -143,27 +150,48 @@ const shareToWhatsApp = () => {
     </div>
 
     <!-- Metrics Grid -->
-    <div v-if="report" class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="glass-card bg-slate-800/30 p-6 flex items-center justify-between border-b-4 border-teal-500">
-        <div>
-          <p class="text-slate-400 text-sm mb-1">إجمالي المبيعات</p>
-          <h3 class="text-3xl font-extrabold">{{ report.totalSales.toLocaleString() }} د.ع</h3>
+    <div v-if="report" class="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div class="glass-card bg-slate-800/30 p-6 flex flex-col justify-between border-b-4 border-teal-500">
+        <div class="flex items-center justify-between mb-4">
+          <p class="text-slate-400 text-sm">إجمالي المبيعات</p>
+          <TrendingUp class="text-teal-400 opacity-20" :size="24" />
         </div>
-        <TrendingUp class="text-teal-400 opacity-20" :size="48" />
+        <h3 class="text-3xl font-extrabold">{{ report.totalSales.toLocaleString() }} د.ع</h3>
+        <div class="flex gap-3 mt-4">
+          <div class="flex flex-col">
+            <span class="text-[10px] text-slate-500">نقدي</span>
+            <span class="text-sm font-bold text-teal-400">{{ report.cashSales.toLocaleString() }}</span>
+          </div>
+          <div class="flex flex-col border-r border-slate-700 pr-3">
+            <span class="text-[10px] text-slate-500">آجل</span>
+            <span class="text-sm font-bold text-amber-500">{{ report.deferredSales.toLocaleString() }}</span>
+          </div>
+        </div>
       </div>
+
       <div class="glass-card bg-slate-800/30 p-6 flex items-center justify-between border-b-4 border-teal-400">
         <div>
-          <p class="text-slate-400 text-sm mb-1">إجمالي الأرباح</p>
+          <p class="text-slate-400 text-sm mb-1">صافي الأرباح</p>
           <h3 class="text-3xl font-extrabold text-teal-400">{{ report.totalProfit.toLocaleString() }} د.ع</h3>
+          <p class="text-[10px] text-slate-500 mt-2">الأرباح بعد خصم التكاليف والخصومات</p>
         </div>
         <PieChart class="text-teal-400 opacity-20" :size="48" />
       </div>
+
       <div class="glass-card bg-slate-800/30 p-6 flex items-center justify-between border-b-4 border-slate-500">
         <div>
           <p class="text-slate-400 text-sm mb-1">عدد الفواتير</p>
           <h3 class="text-3xl font-extrabold">{{ report.count }}</h3>
         </div>
         <FileText class="text-slate-500 opacity-20" :size="48" />
+      </div>
+
+      <div class="glass-card bg-slate-800/30 p-6 flex items-center justify-between border-b-4 border-red-500">
+        <div>
+          <p class="text-slate-400 text-sm mb-1">النواقص</p>
+          <h3 class="text-3xl font-extrabold text-red-500">{{ shortages.length }}</h3>
+        </div>
+        <AlertTriangle class="text-red-500 opacity-20" :size="48" />
       </div>
     </div>
 
@@ -253,16 +281,20 @@ const shareToWhatsApp = () => {
       <p class="text-md text-gray-700">الفترة من: <span class="font-bold">{{ startDate }}</span> إلى <span class="font-bold">{{ endDate }}</span></p>
     </div>
     
-    <div class="grid grid-cols-3 gap-4 mb-8 bg-gray-100 p-4 border border-gray-300 rounded-lg shadow-sm">
+    <div class="grid grid-cols-4 gap-4 mb-8 bg-gray-100 p-4 border border-gray-300 rounded-lg shadow-sm">
       <div class="text-center">
-        <p class="text-sm text-gray-600 mb-1">إجمالي المبيعات</p>
-        <p class="text-xl font-bold">{{ report?.totalSales?.toLocaleString() }} د.ع</p>
+        <p class="text-sm text-gray-600 mb-1">المبيعات (نقدي)</p>
+        <p class="text-xl font-bold">{{ report?.cashSales?.toLocaleString() }} د.ع</p>
       </div>
       <div class="text-center border-x border-gray-300">
+        <p class="text-sm text-gray-600 mb-1">المبيعات (آجل)</p>
+        <p class="text-xl font-bold">{{ report?.deferredSales?.toLocaleString() }} د.ع</p>
+      </div>
+      <div class="text-center border-l border-gray-300">
         <p class="text-sm text-gray-600 mb-1">إجمالي الأرباح</p>
         <p class="text-xl font-bold">{{ report?.totalProfit?.toLocaleString() }} د.ع</p>
       </div>
-      <div class="text-center">
+      <div class="text-center border-r border-gray-300">
         <p class="text-sm text-gray-600 mb-1">عدد الفواتير</p>
         <p class="text-xl font-bold">{{ report?.count }}</p>
       </div>
